@@ -1,0 +1,96 @@
+// BrainSightAI API — Prisma schema
+// Docs: https://pris.ly/d/prisma-schema
+//
+// Scope note: this database exists for AUTH ONLY (see docs/AUTH.md). Scan/inference
+// results are produced on-device by the PyTorch model and are intentionally not stored.
+
+generator client {
+  provider = "prisma-client"
+  // Emitted inside `src/` so `nest build` compiles it and the import path is stable.
+  // The directory is git-ignored and re-created by `npm run prisma:generate`.
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Role-based access control. Assignment on registration is always USER;
+/// RADIOLOGIST and ADMIN are granted by an existing ADMIN (PATCH /users/:id/role).
+enum Role {
+  USER
+  RADIOLOGIST
+  ADMIN
+}
+
+model User {
+  id           String         @id @default(uuid())
+  /// Normalized to lower case on write; unique index enforced at the DB level.
+  email        String         @unique
+  /// Display name, 2–80 chars (validated in the API DTOs).
+  fullName     String
+  /// bcrypt cost-12 hash. Plaintext never reaches this database.
+  passwordHash String
+  role         Role           @default(USER)
+  /// Disabled accounts are rejected at login and on every refresh.
+  isActive     Boolean        @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  refreshTokens RefreshToken[]
+  models        ClassifierModel[]
+
+  @@map("users")
+}
+
+/// Catalogue entry for an on-device inference model.
+///
+/// Only metadata lives here — the weights themselves stay in the app bundle or are
+/// fetched from `downloadUrl`, so no scan or model data is ever persisted by the API.
+model ClassifierModel {
+  id          String   @id @default(uuid())
+  /// Slug shown to clients and used as the stable key, e.g. "brain-tumor-mri".
+  name        String   @unique
+  /// Release label, e.g. "1.0.0".
+  version     String
+  /// What the model does, e.g. "brain-tumor-classification".
+  task        String
+  /// Class labels **in inference order** — must match the training label encoder.
+  labels      String[]
+  description String?
+  /// HTTPS endpoint the app downloads the weights from.
+  downloadUrl String?
+  /// Weight file size in bytes, so the app can show real progress.
+  sizeBytes   Int?
+  /// Drafts are hidden from USER listings until a RADIOLOGIST/ADMIN publishes them.
+  isActive    Boolean  @default(false)
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+  @@map("models")
+}
+
+model RefreshToken {
+  id       String    @id @default(uuid())
+  /// SHA-256 of the opaque refresh token. The raw token is only ever held by the client.
+  tokenHash String   @unique
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Client fingerprint for audit only — never used as an auth factor.
+  userAgent String?
+  ipAddress String?
+
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  /// Set when the token is used (rotation) or explicitly revoked (logout).
+  revokedAt DateTime?
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
