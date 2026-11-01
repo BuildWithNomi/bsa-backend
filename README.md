@@ -96,6 +96,27 @@ Authentication is **deny-by-default**: `JwtAuthGuard` is registered once as a gl
 `APP_GUARD`, so a new controller is private unless it carries `@Public()`. `RolesGuard`
 runs after it and only activates where `@Roles(...)` is declared.
 
+## Deployment (Render)
+
+The repo ships a [`render.yaml`](./render.yaml) blueprint, so the whole service can be
+created from the dashboard:
+
+1. Render Dashboard → **New +** → **Blueprint** → select this repository.
+2. Fill the values marked `sync: false` when prompted:
+   - `DATABASE_URL` — Neon pooled connection string (`...?sslmode=require`)
+   - `ADMIN_EMAIL` / `ADMIN_PASSWORD` — the first administrator (same password policy
+     as registration; used only by the seed step).
+3. Deploy. Render generates both JWT secrets, runs `prisma migrate deploy` on every
+   start, then boots `dist/main`.
+4. Confirm `https://<service-name>.onrender.com/api/v1/health` returns `200` with
+   `{"status":"ok","database":"up",...}`.
+
+Render injects `PORT`; the app already binds to `0.0.0.0`. Free instances spin down
+after inactivity, so the first request after a while can take ~30–60s.
+
+To point the Android client at the deployment, set its API URL (see
+`BrainSightAI/app/build.gradle.kts`) to the service URL — HTTPS is required.
+
 ## Related documentation
 
 Cross-cutting audit material lives in the repository root: [`../docs/AUDIT.md`](../docs/AUDIT.md)
