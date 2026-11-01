@@ -98,24 +98,32 @@ runs after it and only activates where `@Roles(...)` is declared.
 
 ## Deployment (Render)
 
-The repo ships a [`render.yaml`](./render.yaml) blueprint, so the whole service can be
-created from the dashboard:
+The API is deployed as a Render web service at
+**https://bsa-backend-poiu.onrender.com** (health check:
+`/api/v1/health`). Render builds from `main` and redeploys on every push.
 
-1. Render Dashboard → **New +** → **Blueprint** → select this repository.
-2. Fill the values marked `sync: false` when prompted:
-   - `DATABASE_URL` — Neon pooled connection string (`...?sslmode=require`)
-   - `ADMIN_EMAIL` / `ADMIN_PASSWORD` — the first administrator (same password policy
-     as registration; used only by the seed step).
-3. Deploy. Render generates both JWT secrets, runs `prisma migrate deploy` on every
-   start, then boots `dist/main`.
-4. Confirm `https://<service-name>.onrender.com/api/v1/health` returns `200` with
-   `{"status":"ok","database":"up",...}`.
+Service settings:
 
-Render injects `PORT`; the app already binds to `0.0.0.0`. Free instances spin down
-after inactivity, so the first request after a while can take ~30–60s.
+| Setting | Value |
+|---|---|
+| Build command | `npm ci --include=dev && npm run prisma:generate && npm run build` |
+| Start command | `npm run prisma:deploy && node dist/main` |
+| Health check path | `/api/v1/health` |
 
-To point the Android client at the deployment, set its API URL (see
-`BrainSightAI/app/build.gradle.kts`) to the service URL — HTTPS is required.
+Environment variables (set in Render → Environment):
+
+- `NODE_ENV=production`
+- `DATABASE_URL` — Neon pooled connection string (`...?sslmode=require`)
+- `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` — 32+ characters and must differ
+- `ADMIN_EMAIL` / `ADMIN_PASSWORD` — first administrator, used by the seed step
+- Optional: `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL`, `BCRYPT_ROUNDS`, `CORS_ORIGINS`
+
+Render injects `PORT`; the app binds to `0.0.0.0`. Free instances spin down after
+inactivity, so the first request after a while can take ~30–60s.
+
+The Android client uses this URL as its default `BASE_URL` (see
+`BrainSightAI/app/build.gradle.kts`). HTTPS is required — `network_security_config.xml`
+forbids cleartext to public hosts.
 
 ## Related documentation
 
